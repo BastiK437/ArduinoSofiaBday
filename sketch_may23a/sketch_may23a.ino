@@ -1,8 +1,8 @@
 
 // defines
 /*
- * RGB 1: R=6,  G=5,  B=3
- * RGB 2: R=11, G=10, B=9
+ * RGB 1: R=d6,  G=d5,  B=d3
+ * RGB 2: R=d11, G=d10, B=d9
  */
 
 // RGB 1 ports
@@ -17,16 +17,15 @@
 
 // other defines
 #define BUTTON_PORT 7
-#define TIMERTHRESHOLD 100
-#define BRIGHTNESSTHRESHOLD 100
-
-// uncomment to debug with serial port
-#define DEBUG 
-
+#define TIMERTHRESHOLD 32000
 
 // global vars
+// button counter
 bool button = true;
 bool button_old = false;
+int buttonCnt = 0;        // debounce counter
+
+// color state
 int state = 0;
 
 // timer vars
@@ -37,8 +36,11 @@ bool timerRunning = false;
 int red_value = 0;
 int green_value = 0;
 int blue_value = 0;
+
+// brightness vars
 double brightnessFactor = 1.0;
 int brightnessCnt = 0;
+int brightnessDirection = 1;
 
 void setup() {
   // RGB 1 pins as output
@@ -52,37 +54,37 @@ void setup() {
   pinMode(BLUE_TWO,     OUTPUT);
 
   // other port settings
-  pinMode(BUTTON_PORT,  INPUT);
-
-  // debugging
-#ifdef DEBUG
-  Serial.begin(4800);
-#endif 
-  Serial.println("begin program");
+  pinMode(BUTTON_PORT, INPUT_PULLUP);
 }
 
 void loop() {
-  //button=digitalRead(BUTTON_PORT);
+  button=digitalRead(BUTTON_PORT);
 
   // press button
-  if( button == true  && 
-      button != button_old 
+  if( button == false  && 
+      button != button_old &&
+      buttonCnt > 500
     ) {     
     button_old = button;
-    state++;
-    setState();
+    buttonCnt = 0;
 
     startTimer();
   }
 
   // release button
-  if( button == false  && 
-      button != button_old 
+  if( button == true  && 
+      button != button_old &&
+      buttonCnt > 500
     ) {     
     button_old = button;
-    
+    buttonCnt = 0;
+
     // if timer threshold is negative change state, else the brightness got adjusted
     if( !getTimerThreshold() ) {
+      state++;
+      if(state > 3) {
+        state = 0;
+      }
       setState();
     }
     stopTimer();
@@ -92,9 +94,8 @@ void loop() {
     adjustBrightness();
   }
 
-  Serial.println(timerCnt);
-
   incrementTimer();
+  incrementButtonCnt();
 }
 
 void setState() {
@@ -103,38 +104,25 @@ void setState() {
         red_value = 255 * brightnessFactor;
         green_value = 0 * brightnessFactor;
         blue_value = 90 * brightnessFactor;
-#ifdef DEBUG
-        Serial.println("set color pink");
-#endif
         break;
       case 1: 
         red_value = 255 * brightnessFactor;
         green_value = 0 * brightnessFactor;
         blue_value = 0 * brightnessFactor;
-#ifdef DEBUG
-        Serial.println("set color red");
-#endif        
         break;
       case 2: 
         red_value = 0 * brightnessFactor;
         green_value = 255 * brightnessFactor;
         blue_value = 255 * brightnessFactor;
-#ifdef DEBUG
-        Serial.println("set color turquoise");
-#endif        
         break;
       case 3: 
         red_value = 255 * brightnessFactor;
         green_value = 255 * brightnessFactor;
         blue_value = 255 * brightnessFactor;
-#ifdef DEBUG
-        Serial.println("set color white");
-#endif
-        state = 0;
         break;
     }
 
-    // write to new values to ports
+    // write new values to ports
     analogWrite(RED_ONE,    red_value);
     analogWrite(GREEN_ONE,  green_value);
     analogWrite(BLUE_ONE,   blue_value);
@@ -149,12 +137,22 @@ void startTimer() {
 }
 
 void stopTimer() {
+  timerCnt = 0;
   timerRunning = false;
 }
 
 void incrementTimer() {
   if(timerRunning) {
-    timerCnt++;
+    if(timerCnt <= TIMERTHRESHOLD ) {
+      timerCnt++;
+    }
+  }
+}
+
+void incrementButtonCnt() {
+  buttonCnt++;
+  if(buttonCnt < 0) {
+    buttonCnt = 0;
   }
 }
 
@@ -167,12 +165,18 @@ boolean getTimerThreshold() {
 }
 
 void adjustBrightness() {
-  brightnessCnt++;
-
-  if(brightnessCnt % BRIGHTNESSTHRESHOLD) {
-    brightnessFactor += 1.0;
-    if(brightnessFactor > 1.0) {
-      brightnessFactor = 0.0;
-    }
+  if(brightnessDirection == 1) {
+    brightnessFactor += 0.01;
+  } else {
+    brightnessFactor -= 0.01;
   }
+  if(brightnessFactor > 1.0) {
+    brightnessDirection = 0;
+    brightnessFactor = 1.0;
+  } else if( brightnessFactor < 0) {
+    brightnessDirection = 1;
+    brightnessFactor = 0;
+  }
+
+  setState();
 }
